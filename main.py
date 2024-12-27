@@ -55,14 +55,14 @@ test_datagen = ImageDataGenerator(rescale=1.0 / 255)
 
 # Load training and testing data
 training_set = train_datagen.flow_from_directory(
-    r'C:\Users\User\Documents\Tenserflow\rice_plant_lacks_nutrients\train',
+    r'dataset/train',
     target_size=(128, 128),
     batch_size=64,
     class_mode='categorical'
 )
 
 test_set = test_datagen.flow_from_directory(
-    r'C:\Users\User\Documents\Tenserflow\rice_plant_lacks_nutrients\val',
+    r'dataset/val',
     target_size=(128, 128),
     batch_size=64,
     class_mode='categorical'
@@ -88,7 +88,7 @@ converter = tf.lite.TFLiteConverter.from_keras_model(classifier)
 tflite_model = converter.convert()
 
 # Save the TFLite model
-tflite_model_path = r'C:\Users\User\Documents\Tenserflow\rice_plant_lacks_nutrients.tflite'
+tflite_model_path = r'npk-classification.tflite'
 with open(tflite_model_path, 'wb') as f:
     f.write(tflite_model)
 
