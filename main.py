@@ -14,6 +14,8 @@ from tensorflow.keras.preprocessing.image import ImageDataGenerator
 import numpy as np
 import tensorflow as tf
 
+print("Num GPUs Available: ", len(tf.config.list_physical_devices('GPU')))
+
 # Initialize the CNN
 np.random.seed(1337)
 classifier = Sequential()
@@ -39,7 +41,7 @@ classifier.add(Dense(units=4, activation='softmax'))
 
 # Compile the model
 classifier.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
-print(classifier.summary())
+printclassifier.summary()
 
 # Part 2 - Fitting the dataset
 
