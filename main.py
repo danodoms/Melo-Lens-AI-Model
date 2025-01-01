@@ -41,7 +41,7 @@ classifier.add(Dense(units=4, activation='softmax'))
 
 # Compile the model
 classifier.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
-printclassifier.summary()
+classifier.summary()
 
 # Part 2 - Fitting the dataset
 
@@ -78,7 +78,7 @@ print(label_map)
 classifier.fit(
     training_set,
     steps_per_epoch=training_set.samples // training_set.batch_size,
-    epochs=5,
+    epochs=50,
     validation_data=test_set,
     validation_steps=test_set.samples // test_set.batch_size
 )

@@ -2,4 +2,3 @@ dataset/
 dataset*/
 env/
 venv/
-*.tflite
