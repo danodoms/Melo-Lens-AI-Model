@@ -1,183 +1,144 @@
 # -*- coding: utf-8 -*-
 """
-Created on Tue Nov 26 08:41:03 2024
+Created on Sun Mar 09 2025
+
 @author: rexpogi
 """
 
+import os
+import shutil
+import random
 import numpy as np
 import tensorflow as tf
-from tensorflow.keras.applications import MobileNetV2
-from tensorflow.keras.layers import Input, Dense, Dropout, GlobalAveragePooling2D
+from keras.models import Sequential
+from keras.layers import Input, Convolution2D, MaxPooling2D, Flatten, Dense, Dropout
 from tensorflow.keras.preprocessing.image import ImageDataGenerator
-from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau, TensorBoard
-from tensorflow.keras.models import Sequential
-import os
-from datetime import datetime
-from sklearn.model_selection import train_test_split
-import shutil
 
+# Check GPU availability
+print("Num GPUs Available: ", len(tf.config.list_physical_devices('GPU')))
 
-# Clear any previous session
-tf.keras.backend.clear_session()
+# Set seed for reproducibility
+random.seed(42)
 
-# Enable GPU memory growth
-gpus = tf.config.experimental.list_physical_devices('GPU')
-if gpus:
-    try:
-        for gpu in gpus:
-            tf.config.experimental.set_memory_growth(gpu, True)
-        print("GPU memory growth enabled.")
-    except RuntimeError as e:
-        print(f"Error enabling GPU memory growth: {e}")
+# Define dataset path
+dataset_path = "dataset/watermelon-disease/Augmented Image/Augmented_Image"
+train_path = os.path.join(dataset_path, "train")
+val_path = os.path.join(dataset_path, "val")
 
-# Set random seed for reproducibility
+# Create train and val directories if they don't exist
+os.makedirs(train_path, exist_ok=True)
+os.makedirs(val_path, exist_ok=True)
+
+# Get all class folders inside dataset_path
+classes = [d for d in os.listdir(dataset_path) 
+           if os.path.isdir(os.path.join(dataset_path, d)) and d not in ["train", "val"]]
+
+for cls in classes:
+    class_dir = os.path.join(dataset_path, cls)
+    images = [img for img in os.listdir(class_dir) if img.lower().endswith(('.png', '.jpg', '.jpeg'))]
+    
+    # Shuffle images
+    random.shuffle(images)
+
+    # Split dataset: 80% train, 20% val
+    split_idx = int(len(images) * 0.8)
+    train_images = images[:split_idx]
+    val_images = images[split_idx:]
+
+    # Create class folders in train and val directories
+    os.makedirs(os.path.join(train_path, cls), exist_ok=True)
+    os.makedirs(os.path.join(val_path, cls), exist_ok=True)
+
+    # Move images to their respective folders
+    for img in train_images:
+        shutil.move(os.path.join(class_dir, img), os.path.join(train_path, cls, img))
+    
+    for img in val_images:
+        shutil.move(os.path.join(class_dir, img), os.path.join(val_path, cls, img))
+
+    # Remove the original class directory if empty
+    if not os.listdir(class_dir):
+        os.rmdir(class_dir)
+
+print("✅ Dataset successfully split into 'train/' and 'val/'.")
+
+# Part 1 : Building a CNN
 np.random.seed(1337)
-tf.random.set_seed(1337)
-
-
-def prepare_data(input_dir, output_dir, test_size=0.2):
-    # Filter out only the actual class directories (exclude 'train' and 'val')
-    classes = [cls for cls in os.listdir(input_dir) if os.path.isdir(os.path.join(input_dir, cls)) and cls not in ['train', 'val']]
-
-    for cls in classes:
-        cls_path = os.path.join(input_dir, cls)
-        if not os.path.isdir(cls_path):
-            continue
-
-        images = os.listdir(cls_path)
-        train_images, val_images = train_test_split(images, test_size=test_size, random_state=1337)
-
-        train_dir = os.path.join(output_dir, 'train', cls)
-        val_dir = os.path.join(output_dir, 'val', cls)
-
-        # Ensure directories exist
-        os.makedirs(train_dir, exist_ok=True)
-        os.makedirs(val_dir, exist_ok=True)
-
-        for img in train_images:
-            img_path = os.path.join(cls_path, img)
-            try:
-                shutil.copy(img_path, os.path.join(train_dir, img))
-            except PermissionError:
-                print(f"Permission error while copying {img_path}")
-                continue
-
-        for img in val_images:
-            img_path = os.path.join(cls_path, img)
-            try:
-                shutil.copy(img_path, os.path.join(val_dir, img))
-            except PermissionError:
-                print(f"Permission error while copying {img_path}")
-                continue
-
-
-# Input and output directory
-input_dir = r'dataset_balanced'
-output_dir = r'dataset_balanced/train_test_split'
-prepare_data(input_dir, output_dir)
-
-
-# Part 1: Load Pretrained Model and Build the Classifier using Sequential API
-
-# Define the model using Sequential API
 classifier = Sequential()
 
-# Load MobileNetV2 pretrained on ImageNet without the top layer
-classifier.add(MobileNetV2(input_shape=(224, 224, 3), include_top=False, weights='imagenet'))
+# Input layer
+classifier.add(Input(shape=(128, 128, 3)))
 
-# Freeze the base model (MobileNetV2)
-classifier.layers[0].trainable = False
+# Convolutional and pooling layers
+classifier.add(Convolution2D(32, (3, 3), activation='relu'))
+classifier.add(MaxPooling2D(pool_size=(2, 2)))
+classifier.add(Convolution2D(16, (3, 3), activation='relu'))
+classifier.add(MaxPooling2D(pool_size=(2, 2)))
+classifier.add(Convolution2D(8, (3, 3), activation='relu'))
+classifier.add(MaxPooling2D(pool_size=(2, 2)))
 
-# Add GlobalAveragePooling2D layer
-classifier.add(GlobalAveragePooling2D())
+# Flattening and fully connected layers
+classifier.add(Flatten())
+classifier.add(Dense(units=128, activation='relu'))
+classifier.add(Dropout(rate=0.5))
 
-# Add Dense layer with ReLU activation
-classifier.add(Dense(128, activation='relu'))
-
-# Add Dropout layer
-classifier.add(Dropout(0.5))
-
-# Output layer with softmax activation for 4 classes
-classifier.add(Dense(4, activation='softmax'))
+# Output layer (match units to the number of classes)
+num_classes = len(classes)  # Dynamically set output neurons
+classifier.add(Dense(units=num_classes, activation='softmax'))
 
 # Compile the model
 classifier.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
-print(classifier.summary())
+classifier.summary()
 
+# Part 2 - Fitting the dataset
 
-# Part 2: Data Augmentation and Image Generators
-
-# Data augmentation for the training set
+# Create ImageDataGenerator for training and testing
 train_datagen = ImageDataGenerator(
     rescale=1.0 / 255,
     shear_range=0.2,
     zoom_range=0.2,
-    rotation_range=20,
-    width_shift_range=0.2,
-    height_shift_range=0.2,
-    horizontal_flip=True,
-    brightness_range=[0.8, 1.2]
+    horizontal_flip=True
 )
 
-# Only rescale for the test set
 test_datagen = ImageDataGenerator(rescale=1.0 / 255)
 
 # Load training and testing data
 training_set = train_datagen.flow_from_directory(
-    os.path.join(output_dir, 'train'),
-    target_size=(224, 224),
-    batch_size=32,
+    train_path,
+    target_size=(128, 128),
+    batch_size=64,
     class_mode='categorical'
 )
 
 test_set = test_datagen.flow_from_directory(
-    os.path.join(output_dir, 'val'),
-    target_size=(224, 224),
-    batch_size=32,
+    val_path,
+    target_size=(128, 128),
+    batch_size=64,
     class_mode='categorical'
 )
 
 # Print class indices
 label_map = training_set.class_indices
-print(f"Class indices: {label_map}")
-
-
-# Part 3: Train the Model with Callbacks
-
-# Create TensorBoard logs directory
-log_dir = os.path.join("logs", "fit", datetime.now().strftime("%Y%m%d-%H%M%S"))
-
-# Define callbacks
-early_stopping = EarlyStopping(monitor='val_loss', patience=5, restore_best_weights=True)
-reduce_lr = ReduceLROnPlateau(monitor='val_loss', factor=0.5, patience=3)
-tensorboard_callback = TensorBoard(log_dir=log_dir, histogram_freq=1, write_graph=True, write_images=True)
+print("Class Labels: ", label_map)
 
 # Train the model
 classifier.fit(
     training_set,
     steps_per_epoch=training_set.samples // training_set.batch_size,
-    epochs=1,
+    epochs=20,
     validation_data=test_set,
-    validation_steps=test_set.samples // test_set.batch_size,
-    callbacks=[early_stopping, reduce_lr, tensorboard_callback]
+    validation_steps=test_set.samples // test_set.batch_size
 )
 
-# # Part 4: Save the Model in Both Keras and TFLite Formats
+# Part 3 - Convert the model to TensorFlow Lite (TFLite)
 
-# # Save the model in the native Keras format
-# keras_model_path = r'./model/npk-classifier-v2-sequential.keras'
-# classifier.save(keras_model_path, save_format="keras")
-# print(f'Model saved in native Keras format at {keras_model_path}')
+# Convert the model to TFLite
+converter = tf.lite.TFLiteConverter.from_keras_model(classifier)
+tflite_model = converter.convert()
 
-# # Convert the model to TensorFlow Lite (TFLite) format
-# converter = tf.lite.TFLiteConverter.from_keras_model(classifier)
-# tflite_model = converter.convert()
+# Save the TFLite model
+tflite_model_path = "melon-disease.tflite"
+with open(tflite_model_path, 'wb') as f:
+    f.write(tflite_model)
 
-# # Save the TFLite model
-# tflite_model_path = r'./model/npk-classifier-v2-sequential.tflite'
-# with open(tflite_model_path, 'wb') as f:
-#     f.write(tflite_model)
-# print(f'TFLite model saved at {tflite_model_path}')
-
-# To view TensorBoard logs:
-# Run in terminal: tensorboard --logdir=logs/fit
+print(f'✅ TFLite model saved as {tflite_model_path}')

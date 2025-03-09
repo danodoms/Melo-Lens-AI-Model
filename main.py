@@ -78,7 +78,7 @@ print(label_map)
 classifier.fit(
     training_set,
     steps_per_epoch=training_set.samples // training_set.batch_size,
-    epochs=50,
+    epochs=20,
     validation_data=test_set,
     validation_steps=test_set.samples // test_set.batch_size
 )
@@ -90,7 +90,7 @@ converter = tf.lite.TFLiteConverter.from_keras_model(classifier)
 tflite_model = converter.convert()
 
 # Save the TFLite model
-tflite_model_path = r'npk-classification.tflite'
+tflite_model_path = r'melon-disease.tflite'
 with open(tflite_model_path, 'wb') as f:
     f.write(tflite_model)
 
