@@ -1,9 +1,4 @@
 # -*- coding: utf-8 -*-
-"""
-Created on Sun Mar 09 2025
-
-@author: rexpogi
-"""
 
 import os
 import shutil
@@ -13,9 +8,21 @@ import tensorflow as tf
 from keras.models import Sequential
 from keras.layers import Input, Convolution2D, MaxPooling2D, Flatten, Dense, Dropout
 from tensorflow.keras.preprocessing.image import ImageDataGenerator
+from keras.callbacks import EarlyStopping
+from tensorflow.keras.applications import MobileNetV2
+from tensorflow.keras.layers import GlobalAveragePooling2D
+from tensorflow.keras.models import Model
 
 # Check GPU availability
 print("Num GPUs Available: ", len(tf.config.list_physical_devices('GPU')))
+
+# Allow TensorFlow to use multiple threads
+tf.config.threading.set_inter_op_parallelism_threads(8)  # Set based on your CPU cores
+tf.config.threading.set_intra_op_parallelism_threads(8)
+
+# Check CPU usage settings
+print("Inter-op threads:", tf.config.threading.get_inter_op_parallelism_threads())
+print("Intra-op threads:", tf.config.threading.get_intra_op_parallelism_threads())
 
 # Set seed for reproducibility
 random.seed(42)
@@ -51,10 +58,10 @@ for cls in classes:
 
     # Move images to their respective folders
     for img in train_images:
-        shutil.move(os.path.join(class_dir, img), os.path.join(train_path, cls, img))
+        shutil.copy(os.path.join(class_dir, img), os.path.join(train_path, cls, img))
     
     for img in val_images:
-        shutil.move(os.path.join(class_dir, img), os.path.join(val_path, cls, img))
+        shutil.copy(os.path.join(class_dir, img), os.path.join(val_path, cls, img))
 
     # Remove the original class directory if empty
     if not os.listdir(class_dir):
@@ -62,23 +69,26 @@ for cls in classes:
 
 print("✅ Dataset successfully split into 'train/' and 'val/'.")
 
-# Part 1 : Building a CNN
-np.random.seed(1337)
+# Load MobileNetV2 without the top layers (pretrained on ImageNet)
+base_model = MobileNetV2(
+    input_shape=(128, 128, 3),
+    include_top=False,  # Remove fully connected layers
+    weights='imagenet'  # Use pretrained weights
+)
+
+# Freeze the base model (so we don’t modify its pretrained weights)
+base_model.trainable = False
+
+# Build the model
 classifier = Sequential()
 
-# Input layer
-classifier.add(Input(shape=(128, 128, 3)))
+# Add the MobileNetV2 feature extractor
+classifier.add(base_model)
 
-# Convolutional and pooling layers
-classifier.add(Convolution2D(32, (3, 3), activation='relu'))
-classifier.add(MaxPooling2D(pool_size=(2, 2)))
-classifier.add(Convolution2D(16, (3, 3), activation='relu'))
-classifier.add(MaxPooling2D(pool_size=(2, 2)))
-classifier.add(Convolution2D(8, (3, 3), activation='relu'))
-classifier.add(MaxPooling2D(pool_size=(2, 2)))
+# Global pooling instead of Flatten() (better for MobileNetV2)
+classifier.add(GlobalAveragePooling2D())
 
-# Flattening and fully connected layers
-classifier.add(Flatten())
+# Fully connected layers
 classifier.add(Dense(units=128, activation='relu'))
 classifier.add(Dropout(rate=0.5))
 
@@ -88,6 +98,8 @@ classifier.add(Dense(units=num_classes, activation='softmax'))
 
 # Compile the model
 classifier.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
+
+# Print model summary
 classifier.summary()
 
 # Part 2 - Fitting the dataset
@@ -121,23 +133,34 @@ test_set = test_datagen.flow_from_directory(
 label_map = training_set.class_indices
 print("Class Labels: ", label_map)
 
+early_stopping = EarlyStopping(
+    monitor='val_loss',
+    patience=5,  # Stops training if val_loss doesn't improve for 5 epochs
+    restore_best_weights=True
+)
+
 # Train the model
 classifier.fit(
     training_set,
     steps_per_epoch=training_set.samples // training_set.batch_size,
     epochs=20,
     validation_data=test_set,
-    validation_steps=test_set.samples // test_set.batch_size
+    validation_steps=test_set.samples // test_set.batch_size,
+    callbacks=[early_stopping]
 )
 
 # Part 3 - Convert the model to TensorFlow Lite (TFLite)
 
 # Convert the model to TFLite
 converter = tf.lite.TFLiteConverter.from_keras_model(classifier)
+
+# Enable optimization (reduces model size)
+converter.optimizations = [tf.lite.Optimize.DEFAULT]
+
 tflite_model = converter.convert()
 
 # Save the TFLite model
-tflite_model_path = "melon-disease.tflite"
+tflite_model_path = "model/melon-disease.tflite"
 with open(tflite_model_path, 'wb') as f:
     f.write(tflite_model)
 
