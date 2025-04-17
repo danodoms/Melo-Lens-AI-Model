@@ -37,13 +37,13 @@ os.makedirs(train_path, exist_ok=True)
 os.makedirs(val_path, exist_ok=True)
 
 # Get all class folders inside dataset_path
-classes = [d for d in os.listdir(dataset_path) 
+classes = [d for d in os.listdir(dataset_path)
            if os.path.isdir(os.path.join(dataset_path, d)) and d not in ["train", "val"]]
 
 for cls in classes:
     class_dir = os.path.join(dataset_path, cls)
     images = [img for img in os.listdir(class_dir) if img.lower().endswith(('.png', '.jpg', '.jpeg'))]
-    
+
     # Shuffle images
     random.shuffle(images)
 
@@ -59,7 +59,7 @@ for cls in classes:
     # Move images to their respective folders
     for img in train_images:
         shutil.copy(os.path.join(class_dir, img), os.path.join(train_path, cls, img))
-    
+
     for img in val_images:
         shutil.copy(os.path.join(class_dir, img), os.path.join(val_path, cls, img))
 
@@ -149,9 +149,12 @@ classifier.fit(
     callbacks=[early_stopping]
 )
 
-# Part 3 - Convert the model to TensorFlow Lite (TFLite)
+# Part 3 - Save to .keras format
+keras_model_path = "model/melon-disease.keras"
+classifier.save(keras_model_path)
+print(f'✅ Keras model saved as {keras_model_path}')
 
-# Convert the model to TFLite
+# Convert the model to TensorFlow Lite (TFLite)
 converter = tf.lite.TFLiteConverter.from_keras_model(classifier)
 
 # Enable optimization (reduces model size)
