@@ -71,13 +71,13 @@ test_datagen = ImageDataGenerator(rescale=1.0 / 255)
 
 training_set = train_datagen.flow_from_directory(
     train_path,
-    target_size=(224, 224),
+    target_size=(128, 128),
     batch_size=32,
     class_mode='categorical'
 )
 test_set = test_datagen.flow_from_directory(
     val_path,
-    target_size=(224, 224),
+    target_size=(128, 128),
     batch_size=32,
     class_mode='categorical'
 )
@@ -85,7 +85,7 @@ test_set = test_datagen.flow_from_directory(
 print("Class labels:", training_set.class_indices)
 
 # Build model using Functional API
-input_tensor = Input(shape=(224, 224, 3))
+input_tensor = Input(shape=(128, 128, 3))
 base_model = MobileNetV2(input_tensor=input_tensor, include_top=False, weights='imagenet')
 base_model.trainable = False
 
